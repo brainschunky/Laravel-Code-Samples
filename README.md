@@ -31,6 +31,7 @@ Most projects I work on need stateless auth. I pair `tymon/jwt-auth` with a cust
 namespace App\Services;
 
 use App\Models\User;
+use App\Models\RefreshToken;
 use App\Exceptions\InvalidCredentialsException;
 use Illuminate\Support\Facades\Hash;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -84,25 +85,19 @@ class AuthService
     private function validateRefreshToken(string $token): User
     {
         $hashed = hash('sha256', $token);
-
-        $record = \App\Models\RefreshToken::where('token', $hashed)
-            ->where('expires_at', '>', now())
-            ->whereNull('revoked_at')
-            ->firstOrFail();
-
+        $record = RefreshToken::where('token', $hashed)->where('expires_at', '>', now())->whereNull('revoked_at')->firstOrFail();
         return $record->user;
     }
 
     private function revokeRefreshToken(string $token): void
     {
-        \App\Models\RefreshToken::where('token', hash('sha256', $token))
-            ->update(['revoked_at' => now()]);
+        RefreshToken::where('token', hash('sha256', $token))->update(['revoked_at' => now()]);
     }
 }
 ```
 
 ```php
-// AuthController stays clean
+// AuthController 
 class AuthController extends Controller
 {
     public function __construct(private AuthService $auth) {}
@@ -110,21 +105,18 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $result = $this->auth->login($request->validated());
-
         return response()->json($result);
     }
 
     public function refresh(Request $request): JsonResponse
     {
         $result = $this->auth->refresh($request->bearerToken());
-
         return response()->json($result);
     }
 
     public function logout(): JsonResponse
     {
         $this->auth->logout();
-
         return response()->json(['message' => 'Logged out']);
     }
 }
@@ -154,7 +146,7 @@ public function tokenForMobile(User $user): string
 ```
 
 ```php
-// Middleware checks ability, not just auth
+// Middleware checks
 Route::middleware(['auth:sanctum', 'ability:orders:write'])->group(function () {
     Route::post('/orders', [OrderController::class, 'store']);
 });
@@ -168,21 +160,18 @@ I avoid `if ($user->role === 'admin')` scattered across controllers. Everything 
 
 ```php
 namespace App\Policies;
-
 use App\Models\{User, Order};
 
 class OrderPolicy
 {
     public function view(User $user, Order $order): bool
     {
-        return $user->id === $order->user_id
-            || $user->hasRole('admin');
+        return $user->id === $order->user_id || $user->hasRole('admin');
     }
 
     public function refund(User $user, Order $order): bool
     {
-        return $user->hasRole(['admin', 'finance'])
-            && $order->isEligibleForRefund();
+        return $user->hasRole(['admin', 'finance']) && $order->isEligibleForRefund();
     }
 }
 ```
@@ -192,8 +181,6 @@ class OrderPolicy
 public function refund(Order $order): JsonResponse
 {
     $this->authorize('refund', $order);
-
-    // ...
 }
 ```
 
@@ -205,7 +192,6 @@ Business logic lives in services, not controllers or models. Controllers handle 
 
 ```php
 namespace App\Services;
-
 use App\Models\Subscription;
 use App\Events\SubscriptionCreated;
 use App\Exceptions\PlanNotFoundException;
@@ -229,9 +215,7 @@ class SubscriptionService
                 'ends_at'   => now()->addDays($plan->duration_days),
                 'status'    => 'active',
             ]);
-
             event(new SubscriptionCreated($subscription));
-
             return $subscription;
         });
     }
@@ -244,7 +228,6 @@ class SubscriptionService
                 'cancelled_at' => now(),
                 'cancel_reason' => $reason,
             ]);
-
             event(new SubscriptionCancelled($subscription));
         });
     }
@@ -259,7 +242,6 @@ I use repositories when a project has complex queries that would otherwise get d
 
 ```php
 namespace App\Repositories;
-
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -267,11 +249,7 @@ class UserRepository
 {
     public function activePaginated(int $perPage = 20): LengthAwarePaginator
     {
-        return User::query()
-            ->where('status', 'active')
-            ->with(['roles', 'profile'])
-            ->latest()
-            ->paginate($perPage);
+        return User::query()->where('status', 'active')->with(['roles', 'profile'])->latest()->paginate($perPage);
     }
 
     public function findByEmail(string $email): ?User
@@ -302,16 +280,12 @@ public function index(Request $request): AnonymousResourceCollection
         ->when($request->filled('search'), function ($q) use ($request) {
             $q->where(function ($inner) use ($request) {
                 $inner->where('name',  'like', "%{$request->search}%")
-                      ->orWhere('email', 'like', "%{$request->search}%");
+                ->orWhere('email', 'like', "%{$request->search}%");
             });
         })
         ->when($request->filled('role'), function ($q) use ($request) {
             $q->whereHas('roles', fn ($r) => $r->where('name', $request->role));
-        })
-        ->with(['roles', 'profile'])
-        ->latest()
-        ->paginate(15);
-
+        })->with(['roles', 'profile'])->latest()->paginate(15);
     return UserResource::collection($users);
 }
 
@@ -323,17 +297,13 @@ public function show(User $user): UserResource
 public function store(StoreUserRequest $request): JsonResponse
 {
     $user = $this->userService->create($request->validated());
-
-    return (new UserResource($user))
-        ->response()
-        ->setStatusCode(201);
+    return (new UserResource($user))->response()->setStatusCode(201);
 }
 
 public function destroy(User $user): JsonResponse
 {
     $this->authorize('delete', $user);
     $this->userService->delete($user);
-
     return response()->json(null, 204);
 }
 ```
@@ -344,7 +314,6 @@ public function destroy(User $user): JsonResponse
 
 ```php
 namespace App\Http\Resources;
-
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class UserResource extends JsonResource
@@ -378,7 +347,6 @@ class UserResource extends JsonResource
 
 ```php
 namespace App\Http\Requests;
-
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Password;
 
@@ -407,7 +375,6 @@ class StoreUserRequest extends FormRequest
         ];
     }
 
-    // Pre-process before validation runs
     protected function prepareForValidation(): void
     {
         $this->merge([
@@ -423,7 +390,6 @@ class StoreUserRequest extends FormRequest
 
 ```php
 namespace App\Jobs;
-
 use App\Mail\WelcomeMail;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
@@ -437,14 +403,13 @@ class SendWelcomeMail implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries   = 3;
-    public int $backoff = 60; // seconds between retries
+    public int $backoff = 60; 
 
     public function __construct(public readonly User $user) {}
 
     public function handle(): void
     {
-        Mail::to($this->user->email)
-            ->send(new WelcomeMail($this->user));
+        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
     }
 
     public function failed(\Throwable $e): void
