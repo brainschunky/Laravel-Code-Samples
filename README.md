@@ -663,4 +663,4 @@ try {
 
 ---
 
-*These samples cover patterns I reach for on most mid-to-large Laravel projects. The authentication section in particular tends to vary most by project requirements — happy to discuss trade-offs for your specific case.*
+*These samples cover patterns I reach for on most mid-to-large Laravel projects. The authentication section in particular tends to vary most by project requirements — happy to discuss trade-offs for your specific case.* 
