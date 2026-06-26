@@ -415,7 +415,6 @@ class SendWelcomeMail implements ShouldQueue
     public function failed(\Throwable $e): void
     {
         \Log::error("WelcomeMail failed for user {$this->user->id}: {$e->getMessage()}");
-        // Optionally notify Slack / Sentry here
     }
 }
 ```
@@ -431,7 +430,7 @@ SendWelcomeMail::dispatch($user)->delay(now()->addSeconds(10));
 ## 8. Event-Driven Architecture
 
 ```php
-// Event
+
 class OrderShipped
 {
     public function __construct(
@@ -462,7 +461,6 @@ class UpdateInventoryOnShipment
     }
 }
 
-// EventServiceProvider
 protected $listen = [
     OrderShipped::class => [
         NotifyCustomerOnShipment::class,
@@ -490,7 +488,7 @@ class StripePaymentGateway implements PaymentGatewayInterface
     {
         try {
             $intent = \Stripe\PaymentIntent::create([
-                'amount'   => $payload['amount'],        // in paise/cents
+                'amount'   => $payload['amount'],
                 'currency' => $payload['currency'] ?? 'inr',
                 'metadata' => ['order_id' => $payload['order_id']],
             ]);
@@ -518,7 +516,7 @@ class StripePaymentGateway implements PaymentGatewayInterface
 ```
 
 ```php
-// Service that uses the interface, not the concrete class
+
 class OrderPaymentService
 {
     public function __construct(private PaymentGatewayInterface $gateway) {}
@@ -558,8 +556,8 @@ class OrderPaymentService
 For APIs with many optional filters, I use a dedicated `Filter` class per model instead of stacking `when()` calls in the controller.
 
 ```php
-namespace App\Filters;
 
+namespace App\Filters;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
@@ -587,10 +585,8 @@ class UserFilter
     }
 }
 
-// Usage in controller
-$users = (new UserFilter($request))
-    ->apply(User::query())
-    ->paginate(20);
+$users = (new UserFilter($request))->apply(User::query())->paginate(20);
+
 ```
 
 ---
@@ -598,8 +594,8 @@ $users = (new UserFilter($request))
 ## 11. File Upload Service
 
 ```php
-namespace App\Services;
 
+namespace App\Services;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -609,17 +605,14 @@ class FileUploadService
     public function upload(UploadedFile $file, string $folder, string $disk = 'public'): string
     {
         $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-
         return $file->storeAs($folder, $filename, $disk);
     }
 
     public function uploadImage(UploadedFile $file, string $folder): string
     {
-        // Validate before storing
         if (! in_array($file->getMimeType(), ['image/jpeg', 'image/png', 'image/webp'])) {
             throw new \InvalidArgumentException('Unsupported image type.');
         }
-
         return $this->upload($file, $folder);
     }
 
@@ -635,7 +628,7 @@ class FileUploadService
 ## 12. Database Transactions
 
 ```php
-// Wrapping multi-step operations so partial failures don't leave dirty state
+
 DB::transaction(function () use ($order, $payment) {
     $order->update(['payment_status' => 'paid']);
 
@@ -644,9 +637,7 @@ DB::transaction(function () use ($order, $payment) {
         'transaction_id' => $payment['transaction_id'],
         'amount'         => $payment['amount'],
     ]);
-
-    // Dispatched after commit, not before — important for queue jobs
-    // that might read the DB before the transaction commits
+    
     GenerateInvoice::dispatchAfterResponse($order);
 });
 ```
